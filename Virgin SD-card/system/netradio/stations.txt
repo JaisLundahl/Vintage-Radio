@@ -1,0 +1,2 @@
+# stations.txt — UTF-8, one per line: Name|URL|Type
+Name|URL|Type

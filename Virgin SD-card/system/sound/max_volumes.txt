@@ -1,0 +1,5 @@
+# Master volume hardware limit for register 0x4C (0x30 = 0.0dB, 0x00 = +24dB)
+MASTER_REG_MAX 0x30
+
+# Maximum volume percentage for the wait.mp3 tone
+WAIT_VOL_MAX 15

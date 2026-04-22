@@ -1,0 +1,3 @@
+# SSID|PASSWORD – add wifi SSDI and passwords in here...
+SSID|PASSWORD
+
