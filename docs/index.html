@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Vintage Radio V2 | Master System Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        :root { 
+            --gold: #c5a059; 
+            --blue-header: #0056b3; 
+            --bg-sidebar: #f1f3f5; 
+            --text-sidebar: #333; 
+            --green: #28a745;
+            --paper: #ffffff;
+            --accent-blue: #e7f1ff;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: #e9ecef; 
+            color: #333; 
+            margin: 0; 
+            display: flex; 
+            height: 100vh;
+        }
+        
+        /* Sidebar - Updated to Paper/Art Deco style */
+        nav { 
+            width: 320px; 
+            background: var(--bg-sidebar); 
+            color: var(--text-sidebar); 
+            border-right: 4px solid var(--gold); 
+            padding: 35px; 
+            box-sizing: border-box; 
+            overflow-y: auto; 
+            flex-shrink: 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+        }
+        nav h2 { 
+            color: #000; 
+            font-size: 0.85rem; 
+            text-transform: uppercase; 
+            border-bottom: 2px solid var(--gold); 
+            padding-bottom: 8px; 
+            margin-top: 35px; 
+            letter-spacing: 1px;
+        }
+        nav h2:first-child { margin-top: 0; }
+        nav a { 
+            display: block; 
+            color: #555; 
+            text-decoration: none; 
+            padding: 12px 0; 
+            font-size: 0.95rem; 
+            border-bottom: 1px solid #dee2e6; 
+            transition: 0.2s; 
+        }
+        nav a:hover { color: var(--blue-header); background: rgba(0,86,179,0.05); padding-left: 10px; }
+
+        /* Main Content */
+        main { 
+            flex-grow: 1; 
+            padding: 40px 60px; 
+            overflow-y: auto; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .doc-container { 
+            max-width: 950px; 
+            width: 100%;
+            background: var(--paper); 
+            padding: 50px; 
+            border-radius: 4px; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1); 
+            line-height: 1.7;
+        }
+
+        header { 
+            border-bottom: 5px solid var(--gold); 
+            margin-bottom: 40px; 
+            padding-bottom: 25px; 
+            text-align: center;
+        }
+        h1 { 
+            color: #000; 
+            font-size: 2.8rem; 
+            margin: 0; 
+            letter-spacing: -1px;
+            text-transform: uppercase;
+        }
+        .subtitle { 
+            color: var(--gold); 
+            font-weight: bold; 
+            text-transform: uppercase; 
+            letter-spacing: 3px;
+            font-size: 0.9rem;
+        }
+
+        h2 { 
+            color: var(--blue-header); 
+            background: var(--accent-blue); 
+            padding: 15px; 
+            border-left: 8px solid var(--gold); 
+            margin-top: 50px;
+            font-size: 1.6rem;
+        }
+
+        .highlight-box {
+            background: #fffef0;
+            border: 1px solid #f1e0ac;
+            padding: 25px;
+            border-radius: 4px;
+            margin: 30px 0;
+            font-style: italic;
+            color: #555;
+            text-align: center;
+        }
+
+        .mermaid-container {
+            background: #fafafa;
+            border: 1px solid #eee;
+            padding: 30px;
+            border-radius: 4px;
+            margin: 40px 0;
+        }
+
+        .tree-box {
+            background: #212529;
+            color: var(--green);
+            padding: 25px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            white-space: pre;
+            font-size: 0.95rem;
+            margin: 25px 0;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <h2>System Core</h2>
+    <a href="main_cpp.html">main.cpp</a>
+    <a href="reboot_service.html">RebootService.cpp</a>
+    <a href="pins_h.html">pins.h</a>
+
+    <h2>Audio & Modes</h2>
+    <a href="audio_service.html">AudioService.cpp</a>
+    <a href="mode_bt.html">mode_bt.cpp</a>
+    <a href="mode_mp3.html">mode_mp3.cpp</a>
+    <a href="mode_net.html">mode_net.cpp</a>
+    <a href="mode_idle.html">mode_idle.cpp</a>
+
+    <h2>Hardware Services</h2>
+    <a href="adc_service.html">AdcService.cpp</a>
+    <a href="input_service.html">InputService.cpp</a>
+    <a href="tas5828m.html">TAS5828M.cpp</a>
+    <a href="output_service.html">OutputService.cpp</a>
+</nav>
+
+<main>
+    <div class="doc-container">
+        <header>
+            <div class="subtitle">System Architecture & Overview</div>
+            <h1>Vintage Radio V2</h1>
+        </header>
+
+        <section>
+            <p>The <strong>Vintage Radio V2</strong> is a Service-Oriented Architecture (SOA) engineered for the ESP32-WROVER-E. It effectively bridges 1930s mechanical aesthetics with modern high-fidelity audio capabilities by decoupling hardware sensing, audio decoding, and system orchestration.</p>
+            
+            <div class="highlight-box">
+                "The software architecture prioritizes stability by isolating time-critical tasks into dedicated FreeRTOS tasks to ensure zero-stutter playback."
+            </div>
+        </section>
+
+        <section>
+            <h2>System Operational Flow</h2>
+            <p>The following flowchart illustrates the high-level logic from power-on to active playback and safety monitoring.</p>
+            <div class="mermaid-container">
+                <div class="mermaid">
+                    graph TD
+                    Start[Power On] --> Init[Init Hardware, SD & ADC]
+                    Init --> Stable{Wait for Stable Selector 2s}
+                    Stable -->|Timeout| Mode[Start Active Mode: BT/MP3/NET]
+                    Mode --> Loop[Main Loop: Process Event Queue]
+                    Loop --> Vol[Update Volume & EMA Filters]
+                    Loop --> Change{Mode Changed?}
+                    Change -->|Yes| Reboot[RebootService: State Save & Restart]
+                    Change -->|No| Battery{VBat < 12V?}
+                    Battery -->|Yes| Shutdown[SafeShutdown: Deep Sleep]
+                    Battery -->|No| Loop
+                    
+                    style Start fill:#f8f9fa,stroke:#c5a059
+                    style Reboot fill:#fff3cd,stroke:#c5a059
+                    style Shutdown fill:#f8d7da,stroke:#dc3545
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>1. Audio & Streaming Orchestration</h2>
+            <p>The audio engine provides a unified interface for diverse streams, utilizing a shared I2S bus.</p>
+            <ul>
+                <li><strong>Hardware Arbitration</strong>: The <code>AudioService</code> acts as an owner-manager, ensuring only one mode (Bluetooth, MP3, or Network) controls the I2S hardware at any given time.</li>
+                <li><strong>Safe Playback Path</strong>: A custom <code>AudioInfoGuard</code> prevents driver crashes by filtering zero-sample-rate metadata generated during decoder initialization.</li>
+                <li><strong>Tuning Simulation</strong>: A "Wait Tone" (simulated radio static) bridges digital latency during station switches or Wi-Fi buffering to maintain the vintage user experience.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>2. Sensing & Interaction Logic</h2>
+            <p>Interaction is digitized while maintaining analog smoothness through sophisticated signal processing.</p>
+            <ul>
+                <li><strong>Exponential Moving Average (EMA)</strong>: High-frequency ADC noise from potentiometers is filtered using EMA to ensure volume and tuning stability.</li>
+                <li><strong>Multilayer Input Queue</strong>: The <code>InputService</code> decodes quadrature signals and identifies Short, Long, and Very Long button presses to allow for secondary calibration functions.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>3. SD Card File Hierarchy</h2>
+            <p>The radio relies on a specific file structure for persistence and configuration:</p>
+            <div class="tree-box">
+Root (/)
+├── folder1/ ... folder16/ ...... [MP3 Virtual Stations]
+└── system/
+    ├── sound/
+    │   ├── wait.mp3 ............ [Tuning Static Tone]
+    │   └── max_volumes.txt ..... [Hardware Gain Limits]
+    ├── netradio/
+    │   ├── WIFI.txt ............ [SSID|PASS Credentials]
+    │   └── stations.txt ........ [Web Radio URLs]
+    └── mp3/
+        └── mp3_state.txt ....... [Persistent History Tracking]</div>
+        </section>
+    </div>
+</main>
+
+<script>
+    mermaid.initialize({ 
+        startOnLoad: true, 
+        theme: 'neutral',
+        flowchart: { useMaxWidth: true, htmlLabels: true }
+    });
+</script>
+</body>
+</html>

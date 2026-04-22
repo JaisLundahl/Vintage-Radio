@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OutputService Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #e83e8c;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #e83e8c; }
+        h2 { color: #b027b0; border-left: 5px solid #e83e8c; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #fce4ec; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .feature-list {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Output Service Technical Deep Dive</h1>
+        <p>This service manages the visual feedback system of the device, specifically controlling an RGB LED via hardware PWM (LEDC) and smooth fade transitions.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. LEDC Hardware PWM Setup</h2>
+        <p>The service utilizes the ESP32's <strong>LEDC (LED Control)</strong> peripheral to provide flicker-free color mixing.</p>
+        <ul>
+            <li><strong>Channels:</strong> Three independent channels are assigned for Red (0), Green (1), and Blue (2).</li>
+            <li><strong>Configuration:</strong> Initialized with a 5000Hz frequency and 8-bit resolution (0-255 depth).</li>
+            <li><strong>Fade Driver:</strong> Calls <code>ledc_fade_func_install(0)</code> to enable the ESP-IDF hardware-assisted fading, allowing for smooth pulses without manual CPU-driven stepping.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. System State Visualization</h2>
+        <h3><code>setState(SystemState s)</code></h3>
+        <p>Maps high-level application states to specific visual patterns:</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+            <tr style="background-color: #f2f2f2;">
+                <th style="padding: 8px; border-bottom: 1px solid #ddd;">State</th>
+                <th style="padding: 8px; border-bottom: 1px solid #ddd;">Visual Behavior</th>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><code>INIT</code></td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">Pulsing Blue (4s cycle)</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><code>READY</code></td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">Solid Green (Static)</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;"><code>PAIR_MODE</code></td>
+                <td style="padding: 8px; border-bottom: 1px solid #ddd;">Pulsing Red (4s cycle)</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Pulse Engine Implementation</h2>
+        <p>The pulsing logic provides a "breathing" effect by oscillating duty cycles over time.</p>
+        <h3><code>startPulseOnChannel(uint8_t ch)</code></h3>
+        <p>This prepares the pulse by resetting other active pulses (to avoid color clashing) and triggering the initial hardware fade from 0 to 255 over 2 seconds (<code>PULSE_HALF_MS</code>).</p>
+
+        <h3><code>servicePulseChannel(uint8_t ch)</code></h3>
+        <p>Called repeatedly by <code>loop()</code>, this checks the <code>nextSwitchMs</code> timestamp. When reached, it reverses the fade direction (up to down or down to up) and schedules the next hardware fade transition.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Low-Level Control</h2>
+        <h3><code>setRGB(uint8_t r, uint8_t g, uint8_t b)</code></h3>
+        <p>The fundamental function that writes raw 8-bit values directly to the LEDC channels, allowing for any of the 16.7 million colors available in the RGB spectrum.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>5. Design Pattern</h2>
+        <p>The service is implemented as a <strong>Singleton</strong>. This ensures that only one piece of code can control the system LEDs at any time, preventing hardware conflicts. It is accessed globally via the <code>outputService()</code> function.</p>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. Components: ESP32 LEDC Driver, PWM, System States.</p>
+    </footer>
+
+</body>
+</html>

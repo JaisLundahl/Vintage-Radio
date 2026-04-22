@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AudioService Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #28a745;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #28a745; }
+        h2 { color: #1e7e34; border-left: 5px solid #28a745; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #cce5ff; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .note {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffeeba;
+            padding: 10px;
+            margin: 10px 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Audio Service Technical Deep Dive</h1>
+        <p>This document details the I2S audio pipeline, MP3 decoding, and hardware management for the TAS5828M amplifier.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Architecture & The "Audio Guard"</h2>
+        <p>The service uses the <code>AudioTools</code> library to manage I2S streams. A critical component is the <code>AudioInfoGuard</code> class.</p>
+        <h3><code>class AudioInfoGuard</code></h3>
+        <ul>
+            <li><strong>The Problem:</strong> The Helix MP3 decoder often broadcasts empty audio information <code>{0,0,0}</code> during initialization, which can cause the I2S driver to crash or assert.</li>
+            <li><strong>The Solution:</strong> This class intercepts <code>setAudioInfo</code> calls and only passes valid configurations (sample rate, channels, bits) to the physical I2S hardware.</li>
+            <li><strong>Hardware Sync:</strong> Whenever the audio format changes, it triggers <code>audioEnsurePlaybackPath()</code> to clear any amplifier clock faults caused by the momentary I2S clock halt.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Ownership & Resource Management</h2>
+        <p>Because the I2S hardware is a shared resource, the service uses an <code>I2SOwner</code> arbitration system.</p>
+        <h3><code>audioAcquireLocal()</code> / <code>audioAcquireBt()</code> / <code>audioAcquireNet()</code></h3>
+        <ul>
+            <li><strong>Arbitration:</strong> Only one mode can control the I2S bus at a time. If Bluetooth or Network mode is active, Local (SD) playback is denied unless explicitly released.</li>
+            <li><strong>Dynamic Start:</strong> I2S is only initialized (<code>s_i2s.begin</code>) when a mode successfully acquires the hardware.</li>
+            <li><strong>Task Management:</strong> <code>audioAcquireLocal</code> spawns a dedicated FreeRTOS task (<code>audioTask</code>) on Core 1 to handle MP3 decoding without stuttering.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Local Playback Logic</h2>
+        <h3><code>audioPlay(const char* path)</code></h3>
+        <p>This function manages the transition from idle to active music playback.</p>
+        <ul>
+            <li><strong>Wait Tone Override:</strong> If the system plays <code>/system/sound/wait.mp3</code>, it applies a specific volume percentage (<code>s_waitVolume</code>) loaded from the SD card config.</li>
+            <li><strong>Decoder Setup:</strong> It opens the file from the SD card and initializes the <code>EncodedAudioStream</code> with the Helix MP3 decoder.</li>
+            <li><strong>State Control:</strong> Sets <code>s_busy = true</code>, which signals the background task to start moving data.</li>
+        </ul>
+
+        <h3><code>audioStop()</code></h3>
+        <p>Safely shuts down the stream. It includes a safety loop that waits up to 150ms for the background task to exit the <code>copy()</code> block before closing files and freeing decoder memory.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Amplifier Control</h2>
+        <h3><code>audioSetVolume(uint8_t percent)</code></h3>
+        <p>Calculates the "actual" volume by considering the master volume and whether a special tone (like the wait tone) is currently playing. It communicates this to the <code>TAS5828M</code> driver via I2C.</p>
+        
+        <h3><code>audioEnsurePlaybackPath()</code></h3>
+        <p>A vital recovery function that wakes the amplifier from its power-down state and clears any "Clock Fault" registers that occur when I2S clocks start or change frequency.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>5. The Audio Task</h2>
+        <h3><code>audioTask(void*)</code></h3>
+        <p>A high-priority loop running every 2ms.</p>
+        <ul>
+            <li><strong>Data Pumping:</strong> Calls <code>s_copier.copy()</code> to move decoded MP3 data from the decoder output to the I2S buffer.</li>
+            <li><strong>Auto-Stop:</strong> If <code>copy()</code> returns 0 or less, the task detects the End-Of-File (EOF) and automatically calls <code>audioStop()</code>.</li>
+            <li><strong>Clean Teardown:</strong> Monitors <code>s_teardownLocalTask</code> to allow the task to delete itself safely when switching modes.</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation purposes. Components: AudioTools, Helix MP3, TAS5828M.</p>
+    </footer>
+
+</body>
+</html>

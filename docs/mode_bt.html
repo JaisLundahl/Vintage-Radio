@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mode_bt Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #007bff;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #007bff; }
+        h2 { color: #0056b3; border-left: 5px solid #007bff; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #495057; background: #e9ecef; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #f1f3f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .info-tag {
+            background-color: #17a2b8;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Bluetooth Mode Technical Deep Dive</h1>
+        <p>This module implements an A2DP Sink (receiver) for the ESP32, allowing the device to act as a high-quality Bluetooth speaker.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. I2S Configuration for Audio</h2>
+        <p>Bluetooth audio requires a specific I2S setup to handle the incoming data stream from the smartphone.</p>
+        <ul>
+            <li><strong>DMA Management:</strong> Uses 16 DMA buffers of 512 bytes each. This specific configuration was chosen as a stable profile to prevent boot-loop regressions.</li>
+            <li><strong>Clocks:</strong> Configured for 44.1 kHz, 16-bit stereo. <code>tx_desc_auto_clear</code> is enabled to ensure the I2S hardware outputs silence if the Bluetooth buffer runs dry, preventing harsh digital noise.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Lifecycle Management</h2>
+        <h3><code>modeBtStart()</code></h3>
+        <p>Initializes the Bluetooth stack and audio hardware.</p>
+        <ul>
+            <li><strong>WiFi Conflict Mitigation:</strong> Explicitly turns off WiFi (<code>WIFI_OFF</code>) to prevent 2.4GHz interference and ensure the Bluetooth radio has full priority.</li>
+            <li><strong>I2S Acquisition:</strong> Requests hardware ownership via <code>audioStartBtMode()</code>.</li>
+            <li><strong>Persistence:</strong> Uses the <code>Preferences</code> (NVS) library to look up the last connected device's MAC address. If found, it attempts an automatic reconnection; otherwise, it enters discoverable mode.</li>
+        </ul>
+
+        <h3><code>modeBtStop()</code></h3>
+        <p>Performs a "safe stop" to allow for clean reboots or mode switching.</p>
+        <ul>
+            <li><strong>Stopping Logic:</strong> Sets a <code>s_stopping</code> flag and disables auto-reconnect to prevent the Bluetooth stack from trying to reconnect while the system is shutting down.</li>
+            <li><strong>Resource Release:</strong> Closes AVRCP and A2DP connections before calling <code>audioReleaseBt()</code> to return I2S control to the system.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Peer Memory (NVS)</h2>
+        <h3><code>save_peer(const esp_bd_addr_t* peer)</code></h3>
+        <p>When a connection is successfully established, the peer's MAC address is formatted as a string (e.g., <code>00:1a:2b:3c:4d:5e</code>) and stored in Non-Volatile Storage (NVS). This allows the "BoomBox" to recognize and auto-connect to your phone the next time it powers on.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>4. User Interaction (AVRCP)</h2>
+        <p>The module supports standard Bluetooth remote control features via AVRCP:</p>
+        <ul>
+            <li><strong><code>btPlayPauseToggle()</code>:</strong> Queries the current audio state. If music is playing, it sends a pause command; otherwise, it sends play.</li>
+            <li><strong><code>btNext()</code> / <code>btPrev()</code>:</strong> Sends track skip commands to the connected source device.</li>
+            <li><strong><code>btSetVolumePercent()</code>:</strong> Maps the 0-100% volume scale to the 0-127 range required by the Bluetooth Absolute Volume standard.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>5. Connection States</h2>
+        <h3><code>on_connection_state_changed()</code></h3>
+        <p>A callback function triggered by the A2DP library.</p>
+        <ul>
+            <li><strong>Connected:</strong> Triggers <code>save_peer</code> and turns off discoverability to prevent other users from highjacking the stream.</li>
+            <li><strong>Disconnected:</strong> If the shutdown process isn't active, it triggers a reconnection attempt and re-opens discoverability.</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. File: mode_bt.cpp | mode_bt.h</p>
+    </footer>
+
+</body>
+</html>

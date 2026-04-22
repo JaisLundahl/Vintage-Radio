@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdcService.cpp Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #0056b3;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #0056b3; }
+        h2 { color: #004085; border-left: 5px solid #0056b3; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #155724; background: #d4edda; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        pre {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .tag {
+            font-size: 0.8rem;
+            background: #6c757d;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>ADC Service Technical Deep Dive</h1>
+        <p>This document details the implementation of Analog-to-Digital Conversion (ADC) processing for Volume, Battery, Tuner, and Mode selection on the ESP32 platform.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. System Initialization</h2>
+        <h3><code>adcInit()</code></h3>
+        <p>This function prepares the ADC hardware and spawns the background processing task.</p>
+        <ul>
+            <li><strong>Pin Configuration:</strong> Sets <code>INPUT</code> mode for the Volume Pot, Tuner Pot, Battery ADC, and Mode Selector.</li>
+            <li><strong>Calibration Persistence:</strong> Attempts to open <code>/system/sound/max_volumes.txt</code> from the SD card to load user-calibrated <code>TUNER_MIN_RAW</code> and <code>TUNER_MAX_RAW</code> values.</li>
+            <li><strong>Filter Priming:</strong> Performs an initial read to seed the Exponential Moving Average (EMA) filters to prevent value jumping on startup.</li>
+            <li><strong>Task Creation:</strong> Uses <code>xTaskCreatePinnedToCore</code> to launch the <code>adcTask</code> on Core 1, running at 100Hz (every 10ms) to ensure smooth filtering independent of the main loop.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Data Processing & Filtering</h2>
+        <h3><code>readAdcAveraged(uint8_t pin)</code></h3>
+        <p>To combat electrical noise, this function performs <strong>Multisampling</strong>. It reads the analog pin 8 times (<code>SAMPLES_PER_TICK</code>) and returns the average. The bitmask <code>& 0x0FFF</code> is applied to ensure the result stays within the 12-bit range (0-4095).</p>
+
+        <h3><code>adcTick()</code></h3>
+        <p>The heart of the service, executed every 10ms. It processes four distinct signals:</p>
+        <ul>
+            <li><strong>Volume:</strong> Applies an EMA filter. It also implements <strong>Deadbands</strong> (1% at the bottom and top) to ensure that the volume stays at a "true zero" or "true 100%" despite potentiometer flickering.</li>
+            <li><strong>Battery:</strong> Converts the 12-bit raw value to millivolts ($mV$) using a reference voltage of 3300mV and accounts for the physical <strong>Voltage Divider</strong> resistor values (33k / 6.8k).</li>
+            <li><strong>Tuner:</strong> Maps the raw pot value into 16 discrete "bins." It handles "reversed" calibration (where Min > Max) and applies <strong>Hysteresis</strong>. A new bin is only accepted if it remains stable for 200ms (<code>TUNER_STABLE_MS</code>).</li>
+            <li><strong>Mode Selector:</strong> Simple EMA-filtered raw reading for mode switching logic.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Tuner Calibration & Persistence</h2>
+        <h3><code>adcSetTunerMin()</code> / <code>adcSetTunerMax()</code></h3>
+        <p>These functions allow for "On-the-fly" calibration. When called, they capture the current ADC value of the Tuner potentiometer and save it as the new boundary.</p>
+        
+        <h3><code>updateTunerConfig()</code></h3>
+        <p>A helper function that handles SD card file I/O. It reads the existing config file, replaces the specific calibration key (e.g., <code>TUNER_MIN_RAW</code>), and writes the updated string back to the SD card. This ensures calibration survives a power cycle.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Mathematical Constants</h2>
+        <p>The service uses specific constants to tune performance:</p>
+        <table>
+            <tr>
+                <td><code>EMA_SHIFT = 3</code></td>
+                <td>Equivalent to an alpha of 1/8. Provides a balance between smooth signal and low latency.</td>
+            </tr>
+            <tr>
+                <td><code>ADC_VREF_MV = 3300</code></td>
+                <td>The assumed reference voltage of the ESP32 ADC.</td>
+            </tr>
+            <tr>
+                <td><code>TUNER_STABLE_MS = 200</code></td>
+                <td>Debounce time for the tuner to prevent "jittering" between two radio stations or settings.</td>
+            </tr>
+        </table>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation purposes. File: AdcService.cpp</p>
+    </footer>
+
+</body>
+</html>

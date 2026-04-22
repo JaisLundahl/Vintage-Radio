@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TAS5828M Driver Technical Deep Dive</title>
+<style>
+body {
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+line-height: 1.6;
+color: #333;
+max-width: 900px;
+margin: 0 auto;
+padding: 2rem;
+background-color: #f8f9fa;
+}
+header {
+border-bottom: 2px solid #00acc1;
+margin-bottom: 2rem;
+padding-bottom: 1rem;
+}
+h1 { color: #00acc1; }
+h2 { color: #007c91; border-left: 5px solid #00acc1; padding-left: 10px; margin-top: 2rem; }
+h3 { color: #004085; background: #e0f7fa; padding: 5px 10px; border-radius: 4px; }
+code {
+font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+background-color: #e9ecef;
+padding: 0.2rem 0.4rem;
+border-radius: 3px;
+}
+.function-block {
+background: white;
+padding: 1.5rem;
+border-radius: 8px;
+box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+margin-bottom: 2rem;
+}
+.nav-button {
+display: inline-block;
+background-color: #007bff;
+color: white;
+padding: 10px 20px;
+text-decoration: none;
+border-radius: 5px;
+margin-bottom: 20px;
+transition: background-color 0.3s;
+}
+.nav-button:hover { background-color: #0056b3; }
+.register-table {
+width: 100%;
+border-collapse: collapse;
+margin: 10px 0;
+font-size: 0.9rem;
+}
+.register-table th, .register-table td {
+border: 1px solid #ddd;
+padding: 8px;
+text-align: left;
+}
+.register-table th { background-color: #f2f2f2; }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="nav-button">← Back to Main</a>
+
+<header>
+    <h1>TAS5828M Amplifier Driver Deep Dive</h1>
+    <p>This module provides low-level I2C control for the Texas Instruments TAS5828M digital input Class-D amplifier.</p>
+</header>
+
+<div class="function-block">
+    <h2>1. Hardware Communication & Discovery</h2>
+    <h3><code>init()</code></h3>
+    <p>Initializes the I2C interface and searches for the amplifier hardware.</p>
+    <ul>
+        <li><strong>I2C Configuration:</strong> Sets the clock speed to 100 kHz, which is the standard operational frequency for this amplifier.</li>
+        <li><strong>Dynamic Volume Limits:</strong> Reads <code>MASTER_REG_MAX</code> from the SD card (<code>/system/sound/max_volumes.txt</code>) to set a hardware-level gain ceiling, preventing speaker damage.</li>
+        <li><strong>Device Detection:</strong> Pings I2C address <code>0x60</code>. If the device responds, <code>s_ampFound</code> is set to true.</li>
+        <li><strong>Factory Reset:</strong> Sends a reset command (<code>0x11</code>) to <code>TAS_REG_RESET_CTRL</code> to clear previous DSP states and register values, followed by a 50ms delay for stabilization.</li>
+    </ul>
+</div>
+
+<div class="function-block">
+    <h2>2. Volume and Mute Control</h2>
+    <h3><code>setVolumeAndMute(uint8_t volPct, bool mute, bool force)</code></h3>
+    <p>Translates human-readable percentage (0-100) into 8-bit hardware register values.</p>
+    <ul>
+        <li><strong>Linear Mapping:</strong> Calculates the register value between a hardcoded minimum (<code>0xC0</code>) and the user-defined <code>s_regMax</code>.</li>
+        <li><strong>State Optimization:</strong> Unless the <code>force</code> flag is true, the function returns early if the requested volume and mute state match the already applied values to reduce I2C bus traffic.</li>
+        <li><strong>Device Control:</strong> Sets <code>TAS_REG_DEVICE_CTRL</code> to <code>0x0B</code> for Mute/Deep Sleep or <code>0x03</code> for Playback.</li>
+    </ul>
+</div>
+
+<div class="function-block">
+    <h2>3. Signal Path & Fault Recovery</h2>
+    <h3><code>ensurePlaybackPath()</code></h3>
+    <p>Configures the internal routing of the amplifier and clears error states.</p>
+    <ul>
+        <li><strong>SAP Configuration:</strong> Sets the Serial Audio Port (SAP) control registers (1, 2, and 3) to ensure the I2S data format is correctly interpreted by the DSP.</li>
+        <li><strong>Fault Clearing:</strong> Writes <code>0x80</code> to register <code>0x78</code>. This is critical for recovering from "Clock Faults," which often occur when the ESP32 starts or stops the I2S bit clock.</li>
+    </ul>
+</div>
+
+<div class="function-block">
+    <h2>4. Register Map Summary</h2>
+    <p>The driver interacts with these primary registers on the TAS5828M:</p>
+    <table class="register-table">
+        <thead>
+            <tr>
+                <th>Register Name</th>
+                <th>Address</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>TAS_REG_RESET_CTRL</code></td>
+                <td>0x01</td>
+                <td>Resets DSP and digital registers.</td>
+            </tr>
+            <tr>
+                <td><code>TAS_REG_DEVICE_CTRL</code></td>
+                <td>0x03</td>
+                <td>Controls power state (Play/Mute/Sleep).</td>
+            </tr>
+            <tr>
+                <td><code>TAS_REG_VOLUME</code></td>
+                <td>0x4C</td>
+                <td>Sets the digital volume gain.</td>
+            </tr>
+            <tr>
+                <td><code>TAS_REG_BOOK / PAGE</code></td>
+                <td>0x7F / 0x00</td>
+                <td>Memory mapping controls for multi-page register access.</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+    <p>Generated for technical documentation. File: TAS5828M.cpp | TAS5828M.h</p>
+</footer>
+
+</body>
+</html>

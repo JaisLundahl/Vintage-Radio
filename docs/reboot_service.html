@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RebootService Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #dc3545;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #dc3545; }
+        h2 { color: #a71d2a; border-left: 5px solid #dc3545; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #f8d7da; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .warning-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Reboot Service Technical Deep Dive</h1>
+        <p>This service manages the critical final stages of the device lifecycle, ensuring that file systems are unmounted, hardware is silenced, and the battery is protected during power-down or restart events.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Graceful Mode Termination</h2>
+        <h3><code>stopMode(AppMode m)</code></h3>
+        <p>A private helper function that acts as a central dispatcher for shutting down active application logic.</p>
+        <ul>
+            <li><strong>Mode Specificity:</strong> It identifies which service is currently active (BT, MP3, or NET) and calls its specific <code>stop</code> routine.</li>
+            <li><strong>Data Integrity:</strong> By calling these functions, the service ensures that MP3 history is written to the SD card and network streams are closed cleanly before the power is cut.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Controlled System Restart</h2>
+        <h3><code>rebootFromMode(AppMode currentMode)</code></h3>
+        <p>Initiates a standard software reset while ensuring the hardware remains in a known good state.</p>
+        <ol>
+            <li><strong>Audio Lockdown:</strong> Calls <code>audioForceShutdown()</code> to immediately stop I2S clocks and silence the amplifier.</li>
+            <li><strong>Radio Cleanup:</strong> Disconnects and powers off the WiFi radio to prevent transceiver hang-ups during reboot.</li>
+            <li><strong>Storage Safety:</strong> Unmounts the SD card (<code>SD.end()</code>) to prevent filesystem corruption.</li>
+            <li><strong>Hardware Reset:</strong> Calls <code>esp_restart()</code> to perform a full chip reset.</li>
+        </ol>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Low-Voltage Protection</h2>
+        <h3><code>safeShutdown(AppMode currentMode)</code></h3>
+        <p>A specialized emergency routine triggered when the system detects a critical battery level (under 12V).</p>
+        <div class="warning-box">
+            Priority: Mute the amplifier immediately to reduce instantaneous current draw, effectively extending the remaining capacitor energy for final SD card writes.
+        </div>
+        <ul>
+            <li><strong>Power Conservation:</strong> Like the reboot routine, it tears down all active services and unmounts the SD card.</li>
+            <li><strong>Infinite Halt:</strong> Instead of restarting, it enters an infinite <code>while(true)</code> loop after logging "Goodnight!" to the console. This prevents the system from oscillating between booting and low-voltage shutdowns, which can damage batteries.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Coordination with Other Services</h2>
+        <p>The <code>RebootService</code> acts as the "orchestrator" for all other modules during a shutdown event:</p>
+        <ul>
+            <li><strong>AudioService:</strong> Relies on <code>audioForceShutdown</code> and <code>audioMute</code>.</li>
+            <li><strong>InputService:</strong> Uses the <code>AppMode</code> enum to identify the current system state.</li>
+            <li><strong>External Modes:</strong> Directly interfaces with <code>mode_bt</code>, <code>mode_mp3</code>, <code>mode_net</code>, and <code>mode_idle</code>.</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. Components: ESP-IDF System API, SD Card Management, WiFi Stack.</p>
+    </footer>
+
+</body>
+</html>

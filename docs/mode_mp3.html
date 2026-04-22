@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mode_mp3 Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #fd7e14;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #fd7e14; }
+        h2 { color: #d63384; border-left: 5px solid #fd7e14; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #fff3cd; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .logic-box {
+            background-color: #e2f0fe;
+            border: 1px solid #b8daff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>MP3 Mode Technical Deep Dive</h1>
+        <p>This module implements a virtual "Radio" experience using local MP3 files, featuring folder-based stations, history tracking, and a simulated tuning effect.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Virtual Radio Tuning Logic</h2>
+        <p>The MP3 mode simulates an analog radio using the Tuner potentiometer via the <code>AdcService</code>.</p>
+        <ul>
+            <li><strong>Tuning Effect:</strong> When the tuner moves to a new "bin" (station), the system immediately plays a "static" or wait tone (<code>wait.mp3</code>).</li>
+            <li><strong>Confirmation Delay:</strong> The system waits 1.5 seconds (<code>kTuneConfirmMs</code>) before committing to a folder. This prevents rapid-fire file access while the user is still turning the knob.</li>
+            <li><strong>Station Mapping:</strong> 16 folders (e.g., <code>/folder1</code> to <code>/folder16</code>) are mapped to 16 ADC bins.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Playback History & Navigation</h2>
+        <p>Unlike a simple random player, this module maintains a sophisticated history per folder.</p>
+        <div class="logic-box">
+            <strong>FolderState Structure:</strong> Stores the current <code>path</code>, <code>lastIdx</code> (current track), <code>maxIdx</code> (total tracks found), and a <code>history</code> vector of the last 16 played songs.
+        </div>
+        <ul>
+            <li><strong><code>modeMp3Next()</code>:</strong> If the user is currently browsing backward through history, "Next" moves forward in that history. If they are at the end, it generates a new random track.</li>
+            <li><strong><code>modeMp3Prev()</code>:</strong> Allows the user to step back through the specific sequence of random songs played in the current folder.</li>
+            <li><strong>Fallback Mechanism:</strong> If a calculated file (e.g., <code>00000005.mp3</code>) is missing, the system searches backward up to 20 files (<code>kMaxSearchDepth</code>) to find the nearest playable track.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Persistence and State Management</h2>
+        <p>To ensure the "Radio" remembers where it left off, state is saved to the SD card.</p>
+        <h3><code>writeGlobalStateFile()</code></h3>
+        <ul>
+            <li><strong>Safe Writes:</strong> Uses a <code>s_writingState</code> flag to ensure the SD card isn't unmounted or the task killed during a file write operation.</li>
+            <li><strong>Data Stored:</strong> Saves the path, last played index, folder capacity, and the full history sequence for all 16 folders.</li>
+        </ul>
+        <h3><code>initOrLoadGlobalState()</code></h3>
+        <ul>
+            <li><strong>Auto-Indexing:</strong> If no state file is found, the system performs a one-time deep scan of the SD card to discover the <code>maxIdx</code> for every folder.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Background Task (mp3Task)</h2>
+        <p>A dedicated FreeRTOS task handles the high-level logic every 50ms.</p>
+        <ul>
+            <li><strong>Seamless Wait Tone:</strong> Monitors the wait tone and loops it automatically if the user remains between "stations".</li>
+            <li><strong>Auto-Advance:</strong> When a song finishes naturally, the task automatically triggers <code>modeMp3Next()</code> to keep the music playing.</li>
+            <li><strong>Tuner Deadzone:</strong> Temporarily ignores tuner input (<code>s_ignoreTunerUntil</code>) after a manual track skip to prevent electrical noise from accidentally changing the station.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>5. Integration with AudioService</h2>
+        <p>While <code>mode_mp3</code> decides <em>what</em> to play, it uses <code>AudioService</code> to perform the actual I2S streaming.</p>
+        <ul>
+            <li><strong>I2S Ownership:</strong> Calls <code>audioStartMp3Mode()</code> to hijack the audio hardware from Bluetooth or Network modes.</li>
+            <li><strong>Control:</strong> Uses <code>audioPause()</code> and <code>audioResume()</code> for the Play/Pause toggle to keep the decoder state in memory.</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. File: mode_mp3.cpp | mode_mp3.h</p>
+    </footer>
+
+</body>
+</html>

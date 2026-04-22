@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>main.cpp Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #212529;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #212529; }
+        h2 { color: #343a40; border-left: 5px solid #212529; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #e9ecef; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .file-tree {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Main Application Orchestrator</h1>
+        <p>The <code>main.cpp</code> file serves as the entry point and central coordinator, managing the system lifecycle, event dispatching, and power protection.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. System Boot & Initialization</h2>
+        <h3><code>setup()</code></h3>
+        <p>This function handles the sequential power-up of all hardware and software services.</p>
+        <ul>
+            <li><strong>Hardware Init:</strong> Starts Serial debugging, initializes the RGB LED via <code>outputService()</code>, and mounts the SD card using high-speed SPI.</li>
+            <li><strong>Service Init:</strong> Boots <code>InputService</code>, <code>AdcService</code>, and <code>AudioService</code>.</li>
+            <li><strong>Stable Mode Selection:</strong> Uses <code>waitForStableSelector(2000)</code> to ensure the user isn't actively turning the mode knob before deciding which mode to start.</li>
+            <li><strong>Volume Priming:</strong> Sets the amplifier gain immediately to match the physical potentiometer before any audio begins playing.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Event Loop & Dispatcher</h2>
+        <h3><code>loop()</code></h3>
+        <p>The main loop runs continuously, acting as the primary dispatcher for user input and system health checks.</p>
+        <ul>
+            <li><strong>Input Handling:</strong> Polls <code>inputsGetEvent()</code> and routes events (Rotary CW/CCW, Short/Long/Very Long Press) to the currently active mode (BT, MP3, or NET).</li>
+            <li><strong>Mode Switching:</strong> If <code>EV_MODE_CHANGED</code> is detected, the system initiates a controlled <strong>Reboot</strong> via <code>rebootFromMode()</code>. This ensures a clean slate for the ESP32 when switching between complex tasks like Bluetooth and WiFi.</li>
+            <li><strong>Volume Management:</strong> Updates the amplifier gain every 50ms to ensure smooth response while preventing I2C bus congestion.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Power and Calibration Features</h2>
+        <h3>Battery Protection</h3>
+        <p>The loop monitors <code>adcBattery_mV()</code>. If the voltage drops below 12V (12000mV) for a sustained period, it triggers <code>safeShutdown()</code> to protect the battery from over-discharge.</p>
+
+        <h3>Tuner Calibration</h3>
+        <p>Implemented through <code>EV_VERY_LONG_PRESS</code> and <code>RELEASE</code> on the encoder button. This allows the user to set the physical Min/Max limits of the Tuner potentiometer, which are then persisted to the SD card.</p>
+    </div>
+
+    <div class="function-block">
+        <h2>4. SD Card File Structure</h2>
+        <p>The system expects a specific directory structure on the SD card to function correctly:</p>
+        <div class="file-tree">
+/ (Root)<br>
+├── /folder1 ... /folder16 (MP3 Stations)<br>
+└── /system<br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── /sound (wait.mp3, max_volumes.txt)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;├── /netradio (WIFI.txt, stations.txt)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;└── /mp3 (mp3_folders.txt, mp3_state.txt)
+        </div>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. Entry Point: main.cpp</p>
+    </footer>
+
+</body>
+</html>

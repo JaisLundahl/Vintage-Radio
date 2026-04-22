@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mode_net Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #17a2b8;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #17a2b8; }
+        h2 { color: #0c5460; border-left: 5px solid #17a2b8; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #d1ecf1; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .warning-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Network Radio Mode Technical Deep Dive</h1>
+        <p>This module implements an Internet Radio client supporting MP3 and AAC streams, PLS/M3U playlist parsing, and robust Wi-Fi connection management.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Wi-Fi Management & Provisioning</h2>
+        <p>The system relies on <code>/system/netradio/WIFI.txt</code> on the SD card to manage credentials.</p>
+        <ul>
+            <li><strong>Smart Scanning:</strong> <code>connectWiFiFromFile()</code> scans the local airwaves and compares found SSIDs against the stored list, automatically selecting the access point with the <strong>strongest RSSI</strong>.</li>
+            <li><strong>Event Handlers:</strong> Uses <code>onWiFiEvent</code> to detect disconnections. If the signal is lost, it signals the audio task to stop and sets a <code>s_needResumePlay</code> flag to auto-resume once the IP is regained.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Stream Acquisition & Parsing</h2>
+        <h3><code>playUrl(const String& url)</code></h3>
+        <p>This is the core network engine. It handles the complexities of modern web streaming:</p>
+        <ul>
+            <li><strong>Protocol Handling:</strong> Automatically switches between <code>WiFiClient</code> and <code>WiFiClientSecure</code> (Insecure mode) based on whether the URL is HTTP or HTTPS.</li>
+            <li><strong>Playlist Parsing:</strong> Recursively handles <code>.m3u</code>, <code>.m3u8</code>, and <code>.pls</code> files. It extracts the raw stream URL from these text-based formats.</li>
+            <li><strong>Manual Redirects:</strong> Because standard HTTP clients often struggle with switching from HTTP to HTTPS during a 301/302 redirect, this module handles redirects manually to ensure the correct secure client is initialized.</li>
+        </ul>
+        <div class="warning-box">
+            <strong>Memory Management:</strong> Uses lazy-initialization for <code>MP3DecoderHelix</code> and <code>AACDecoderHelix</code> to conserve heap memory until the Content-Type of the stream is confirmed.
+        </div>
+    </div>
+
+    <div class="function-block">
+        <h2>3. The Network Audio Task</h2>
+        <p>A FreeRTOS task (<code>netTask</code>) runs at a high frequency (2ms) to prevent audio buffer underflows (stuttering).</p>
+        <ul>
+            <li><strong>Data Pumping:</strong> Calls <code>s_copy->copy()</code> which pulls data from the HTTP stream, decodes it via Helix, and pushes it to the <code>AudioInfoGuard</code> in the <code>AudioService</code>.</li>
+            <li><strong>Stream Watchdog:</strong> Monitors <code>s_lastAudioData</code>. If no data is received for 10 seconds (<code>kStreamStallMs</code>), it assumes the stream is dead and initiates a retry.</li>
+            <li><strong>Command Queue:</strong> Uses volatile flags (<code>s_cmdStop</code>, <code>s_cmdPlay</code>) to allow the main thread to control the task safely without mutex-induced deadlocks.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Tuning Experience</h2>
+        <p>Similar to the MP3 mode, the Network mode uses a "Wait Tone" to mask the latency of Wi-Fi connections and buffer filling.</p>
+        <ul>
+            <li><strong>Wait Tone Ownership:</strong> When tuning, <code>mode_net</code> releases ownership of the I2S hardware and plays <code>wait.mp3</code> locally. This ensures the user hears immediate feedback while the ESP32 is busy performing DNS lookups or HTTP handshakes.</li>
+            <li><strong>Station Loading:</strong> Loads up to 16 stations from <code>/system/netradio/stations.txt</code>, parsed as <code>Name|URL|Type</code>.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>5. Performance Monitoring</h2>
+        <p>The service logs download performance to the Serial console every second (<code>kRxPrintIntervalMs</code>). This helps in diagnosing whether audio stuttering is due to slow Wi-Fi or server-side throttling.</p>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. File: mode_net.cpp | mode_net.h</p>
+    </footer>
+
+</body>
+</html>

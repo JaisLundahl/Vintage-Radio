@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mode_idle Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #6c757d;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #343a40; }
+        h2 { color: #495057; border-left: 5px solid #6c757d; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #495057; background: #e9ecef; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #f1f3f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .status-tag {
+            background-color: #6c757d;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Idle Mode Technical Deep Dive</h1>
+        <p>This module defines the "quiet" state of the system, acting as a placeholder for low-power operations and system-wide silencing.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Purpose and Role</h2>
+        <p>The <code>mode_idle</code> module is part of the system's state machine (<code>AppMode</code>). It represents a neutral state where no active audio streaming (Bluetooth, MP3, or Network) is occurring.</p>
+        <ul>
+            <li><strong>Resource Conservation:</strong> It provides a safe transition point between high-power modes like <code>MODE_BT</code> and <code>MODE_NET</code>.</li>
+            <li><strong>System Silence:</strong> It ensures that all "noisy" peripherals (WiFi, Bluetooth, and I2S) are inactive or muted to prevent background hiss or power drain.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Lifecycle Functions</h2>
+        <h3><code>modeIdleStart()</code></h3>
+        <p>Called when the system switches to <code>MODE_IDLE</code>.</p>
+        <ul>
+            <li><strong>Operational Logic:</strong> Its primary intent is to disable active radios and mute the audio path. While the current implementation serves as a boilerplate, it is the designated location for putting the ESP32 into a "ready-but-quiet" state.</li>
+        </ul>
+
+        <h3><code>modeIdleStop()</code></h3>
+        <p>Called immediately before the system transitions away from Idle to a functional mode (e.g., entering MP3 mode).</p>
+
+        <h3><code>modeIdleLoop()</code></h3>
+        <p>This function is called repeatedly by the main application loop while the system is in the Idle state.</p>
+        <ul>
+            <li><strong>Future-Proofing:</strong> Currently empty, this is where background housekeeping tasks or light-sleep entry logic would be implemented to minimize battery consumption.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Integration with InputService</h2>
+        <p>The <code>InputService</code> specifically looks for <code>MODE_IDLE</code> when decoding the ADC-based mode selector. If the raw voltage doesn't match the specific windows for Bluetooth, MP3, or Network modes, the system defaults to this Idle state.</p>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. File: mode_idle.cpp | mode_idle.h</p>
+    </footer>
+
+</body>
+</html>

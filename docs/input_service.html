@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InputService.cpp Technical Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #6f42c1;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #6f42c1; }
+        h2 { color: #4b2354; border-left: 5px solid #6f42c1; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #e2d9f3; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Input Service Technical Deep Dive</h1>
+        <p>This service manages user interaction through physical buttons, rotary encoders, and ADC-based mode selection.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Event Architecture & Queue</h2>
+        <p>The system uses a producer-consumer model with a small internal ring buffer (queue) to ensure no user inputs are missed during busy processing cycles.</p>
+        <ul>
+            <li><strong>The Event Structure:</strong> Every <code>InputEvent</code> contains the event type (press, rotation, etc.), the <code>AppMode</code> active when the event occurred, and a timestamp.</li>
+            <li><strong><code>qpush()</code> / <code>qpop()</code>:</strong> These helper functions manage a circular buffer of size 8. If the queue overflows, the oldest event is discarded to make room for the newest interaction.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Advanced Button Handling</h2>
+        <h3><code>updateButton(BtnState& b)</code></h3>
+        <p>This function implements a sophisticated state machine for a single button.</p>
+        <ul>
+            <li><strong>Software Debounce:</strong> Ignores state changes faster than 20ms (<code>DEBOUNCE_MS</code>) to filter out mechanical switch noise.</li>
+            <li><strong>Multi-stage Timing:</strong>
+                <table>
+                    <tr><th>Type</th><th>Threshold</th><th>Event Triggered</th></tr>
+                    <tr><td>Short Press</td><td>&lt; 800ms</td><td>On Release</td></tr>
+                    <tr><td>Long Press</td><td>800ms</td><td>During Hold</td></tr>
+                    <tr><td>Very Long Press</td><td>5000ms</td><td>During Hold</td></tr>
+                </table>
+            </li>
+            <li><strong>Release Logic:</strong> If a "Very Long Press" was triggered, the system can optionally fire a <code>EV_VERY_LONG_RELEASE</code> event.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. Rotation Decoding</h2>
+        <h3><code>updateEncoderRotary()</code></h3>
+        <p>When configured in <code>INPUT_MODE_ROTARY</code>, this function decodes Quadrature signals from pins A and B.</p>
+        <ul>
+            <li><strong>Direction Table:</strong> Uses a lookup table (<code>dirTable</code>) based on the previous and current state of both pins to determine CW (Clockwise) or CCW (Counter-Clockwise) movement.</li>
+            <li><strong>Velocity Limiting:</strong> Includes a debounce check to prevent "ghost" rotations if the encoder is turned too fast or has mechanical bounce.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Mode Selection via ADC</h2>
+        <h3><code>decodeModeFromAdc(uint16_t raw)</code></h3>
+        <p>Instead of a digital switch, the system uses an analog voltage divider to determine the current application mode.</p>
+        <ul>
+            <li><strong>Voltage Windows:</strong>
+                <ul>
+                    <li><strong>BT:</strong> &lt; 400 (~0V)</li>
+                    <li><strong>MP3:</strong> 1400 - 2600 (~1.65V)</li>
+                    <li><strong>NET:</strong> &gt; 3000 (~3.3V)</li>
+                </ul>
+            </li>
+            <li><strong>Hysteresis & Debounce:</strong> <code>updateModeSelector()</code> requires the voltage to stay within a window for 200ms (<code>MODE_DEBOUNCE_MS</code>) before the <code>EV_MODE_CHANGED</code> event is fired.</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>5. Public Interface</h2>
+        <ul>
+            <li><strong><code>inputsInit()</code>:</strong> Configures pins as <code>INPUT_PULLUP</code> and performs the first read to establish the baseline state.</li>
+            <li><strong><code>inputsTick()</code>:</strong> Should be called frequently (e.g., in the main loop or a timer task) to process physical signals into events.</li>
+            <li><strong><code>inputsGetEvent(InputEvent& out)</code>:</strong> The primary way for the application to consume user inputs. Returns <code>true</code> if an event was retrieved from the queue.</li>
+        </ul>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. File: InputService.cpp | InputService.h</p>
+    </footer>
+
+</body>
+</html>

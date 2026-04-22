@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Pinmap Deep Dive</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+            background-color: #f8f9fa;
+        }
+        header {
+            border-bottom: 2px solid #6c757d;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 { color: #212529; }
+        h2 { color: #495057; border-left: 5px solid #6c757d; padding-left: 10px; margin-top: 2rem; }
+        h3 { color: #004085; background: #e9ecef; padding: 5px 10px; border-radius: 4px; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            background-color: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+        }
+        .function-block {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .nav-button {
+            display: inline-block;
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            transition: background-color 0.3s;
+        }
+        .nav-button:hover { background-color: #0056b3; }
+        .pin-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        .pin-table th, .pin-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        .pin-table th { background-color: #f2f2f2; font-weight: bold; }
+        .pin-table tr:hover { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="nav-button">← Back to Main</a>
+
+    <header>
+        <h1>Hardware Pinmap (ESP32-WROOM-32E)</h1>
+        <p>The <code>pins.h</code> file defines the static hardware configuration. It ensures all services reference the same physical GPIO pins for communication and sensing.</p>
+    </header>
+
+    <div class="function-block">
+        <h2>1. Audio and Communication Interfaces</h2>
+        <p>The system uses three primary digital buses to communicate with the amplifier and storage.</p>
+        <table class="pin-table">
+            <thead>
+                <tr>
+                    <th>Interface</th>
+                    <th>Signals</th>
+                    <th>GPIO Pins</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>I2S (Audio Data)</strong></td>
+                    <td>BCK, LRCK, DATA</td>
+                    <td>14, 25, 27</td>
+                </tr>
+                <tr>
+                    <td><strong>I2C (Amp Config)</strong></td>
+                    <td>SDA, SCL</td>
+                    <td>21, 22</td>
+                </tr>
+                <tr>
+                    <td><strong>SPI (SD Card)</strong></td>
+                    <td>CS, SCK, MOSI, MISO</td>
+                    <td>5, 18, 23, 19</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="function-block">
+        <h2>2. Analog Inputs (Sensors)</h2>
+        <p>Analog inputs are mapped to ADC1 pins because ADC2 cannot be used simultaneously with WiFi.</p>
+        <ul>
+            <li><strong>PIN_VOL_POT (GPIO 36):</strong> Dedicated to the volume control potentiometer.</li>
+            <li><strong>PIN_TUNER_POT (GPIO 39):</strong> Dedicated to the station tuning potentiometer.</li>
+            <li><strong>PIN_VBAT_ADC (GPIO 34):</strong> Used for battery voltage monitoring via a voltage divider.</li>
+            <li><strong>PIN_MODE_SEL_ADC (GPIO 35):</strong> Used for the 3-way mode switch (BT/MP3/NET).</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>3. User Interface & Feedback</h2>
+        <p>Standard GPIOs are utilized for the rotary encoder and the visual status LED.</p>
+        <ul>
+            <li><strong>Rotary Encoder:</strong> Signals A (GPIO 32), B (GPIO 33), and Push Button (GPIO 13).</li>
+            <li><strong>RGB LED:</strong> PWM-capable pins for Red (GPIO 26), Green (GPIO 2), and Blue (GPIO 4).</li>
+        </ul>
+    </div>
+
+    <div class="function-block">
+        <h2>4. Software Configuration Flags</h2>
+        <p>This file also acts as a compile-time configuration hub.</p>
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; border-radius: 4px;">
+            <code>CURRENT_INPUT_MODE</code>: Currently set to <code>INPUT_MODE_ROTARY</code>, which instructs the <code>InputService</code> to treat PIN_ENC_A and PIN_ENC_B as quadrature signals rather than independent buttons.
+        </div>
+    </div>
+
+    <footer style="margin-top: 3rem; font-size: 0.8rem; color: #666;">
+        <p>Generated for technical documentation. Hardware: ESP32-WROOM-32E</p>
+    </footer>
+
+</body>
+</html>
