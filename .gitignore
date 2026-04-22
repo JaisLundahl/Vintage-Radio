@@ -1,0 +1,22 @@
+# PlatformIO generated folders
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Unit testing
+.fpio/
+
+# Visual Studio Code & IDE metadata
+.vscode/
+.clang_format
+.gcc-flags.json
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.o
+*.a
+*.elf
+*.bin
