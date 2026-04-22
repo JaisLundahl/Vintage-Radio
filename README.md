@@ -43,10 +43,11 @@ The radio includes built-in protection logic to ensure SD-card function
 
 ## 📂 Preparing Your SD Card
 For a new setup, the system expects the following structure on the SD card:
-* **`/folder1` to `/folder16`**: Place your MP3 files here; these correspond to the tuner positions.
 * **`/system/sound/`**: Contains the `wait.mp3` (static noise) and volume limits.
 * **`/system/netradio/`**: Contains `WIFI.txt` and `stations.txt` for internet radio setup.
-
+* **`/system/mp3/`**: Contains `mp3_folders.txt` that state the specific names for all the 16 folders.
+* **`/folder1` to `/folder16`**: Place your MP3 files here; these correspond to the tuner positions names according to the mp3_folders.txt file.
+  
 ## Tech Stack
 * **Framework**: Arduino / PlatformIO.
 * **Key Libraries**: [Arduino-Audio-Tools](https://github.com/pschatzmann/arduino-audio-tools), [Libhelix](https://github.com/pschatzmann/arduino-libhelix).
