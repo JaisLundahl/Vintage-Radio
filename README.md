@@ -2,7 +2,7 @@
 
 An ESP32-WROVER-E based Service-Oriented Architecture (SOA) framework that blends vintage radio mechanical aesthetics with modern digital audio.
 
-### 🌐 [View the Technical Dashboard & Documentation](https://your-username.github.io/your-repository-name/)
+### 🌐 [View the Technical Dashboard & Documentation]https://jaislundahl.github.io/Vintage-Radio/
 
 ## Overview
 This project manages high-fidelity audio by isolating time-critical tasks into dedicated FreeRTOS tasks. It features a "Controlled Reboot Model" to ensure system stability when switching between complex Bluetooth and Network stacks.
